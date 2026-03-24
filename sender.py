@@ -1,5 +1,7 @@
 import asyncio
 import fractions
+import json
+import os
 
 import av
 import numpy as np
@@ -8,7 +10,10 @@ import sounddevice as sd
 
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 
-SERVER_URL = "http://RECEIVER_IP:8000"
+_config_path = os.path.join(os.path.dirname(__file__), "config.json")
+with open(_config_path) as _f:
+    _config = json.load(_f)
+SERVER_URL = _config["server_url"]
 SAMPLE_RATE = 48000
 CHANNELS = 1
 BLOCK_SAMPLES = 960  # 20 ms
@@ -20,6 +25,7 @@ class MicrophoneAudioTrack(MediaStreamTrack):
 
     def __init__(self, input_device=None):
         super().__init__()
+        self._loop = asyncio.get_event_loop()
         self.input_queue: asyncio.Queue[np.ndarray] = asyncio.Queue(maxsize=100)
         self.pts = 0
         self.stream = sd.InputStream(
@@ -34,9 +40,8 @@ class MicrophoneAudioTrack(MediaStreamTrack):
 
     def _audio_callback(self, indata, frames, time, status):
         chunk = np.copy(indata[:, 0])
-        loop = asyncio.get_event_loop()
         try:
-            loop.call_soon_threadsafe(self.input_queue.put_nowait, chunk)
+            self._loop.call_soon_threadsafe(self.input_queue.put_nowait, chunk)
         except asyncio.QueueFull:
             pass
 
